@@ -1,0 +1,38 @@
+{
+  "algorithm": "RandomForest",
+  "n_estimators": 200,
+  "trained_at": "2026-06-07T15:49:37.352432",
+  "n_samples": 3840,
+  "varieties": [
+    "Arabica Bourbon",
+    "Arabica Jackson",
+    "Robusta",
+    "Tea (Icyayi)",
+    "Pyrethrum (Umuravumba)",
+    "Chili Pepper (Urusenda rw'umunyu)",
+    "Macadamia",
+    "Avocado (Avoka)"
+  ],
+  "districts": [
+    "Gakenke",
+    "Rulindo",
+    "Gicumbi",
+    "Burera",
+    "Huye",
+    "Nyaruguru",
+    "Gisagara",
+    "Ruhango",
+    "Nyanza",
+    "Muhanga",
+    "Nyamasheke",
+    "Karongi",
+    "Rusizi",
+    "Rutsiro",
+    "Nyabihu",
+    "Ngoma",
+    "Kirehe",
+    "Kayonza",
+    "Gasabo",
+    "Kicukiro"
+  ]
+}
