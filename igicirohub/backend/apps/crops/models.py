@@ -4,18 +4,23 @@ from apps.accounts.models import CustomUser
 
 class Crop(models.Model):
     STATUS_CHOICES = [
-        ('listed','Listed'), ('harvesting','Harvesting'),
-        ('sold','Sold'), ('inactive','Inactive'),
+        ('listed',     'Listed'),
+        ('harvesting', 'Harvesting'),
+        ('sold',       'Sold'),
+        ('inactive',   'Inactive'),
     ]
     CATEGORY_CHOICES = [
-        ('vegetables','Vegetables'), ('grains','Grains'),
-        ('fruits','Fruits'), ('tubers','Tubers'),
-        ('legumes','Legumes'), ('other','Other'),
+        ('vegetables', 'Vegetables'),
+        ('grains',     'Grains'),
+        ('fruits',     'Fruits'),
+        ('tubers',     'Tubers'),
+        ('legumes',    'Legumes'),
+        ('other',      'Other'),
     ]
 
     farmer      = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='crops')
     name        = models.CharField(max_length=100)
-    emoji       = models.CharField(max_length=10, default='🌱')
+    emoji       = models.CharField(max_length=20, default='☕')
     category    = models.CharField(max_length=20, choices=CATEGORY_CHOICES, default='other')
     quantity    = models.DecimalField(max_digits=10, decimal_places=2)
     unit        = models.CharField(max_length=20, default='kg')
@@ -45,4 +50,4 @@ class SavedCrop(models.Model):
 
     class Meta:
         unique_together = ('user', 'crop')
-        ordering = ['-saved_at']
+        ordering        = ['-saved_at']

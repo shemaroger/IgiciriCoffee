@@ -33,13 +33,18 @@ def my_crops(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def create_crop(request):
-    if request.user.role != 'farmer':
-        return Response({'error': 'Only farmers can post crops.'}, status=status.HTTP_403_FORBIDDEN)
+    if request.user.role not in ['farmer', 'cooperative']:
+        return Response(
+            {'error': 'Only cooperatives can post listings.'},
+            status=status.HTTP_403_FORBIDDEN
+        )
     s = CropCreateSerializer(data=request.data, context={'request': request})
     if s.is_valid():
         crop = s.save()
-        return Response(CropSerializer(crop, context={'request': request}).data,
-                        status=status.HTTP_201_CREATED)
+        return Response(
+            CropSerializer(crop, context={'request': request}).data,
+            status=status.HTTP_201_CREATED
+        )
     return Response(s.errors, status=status.HTTP_400_BAD_REQUEST)
 
 

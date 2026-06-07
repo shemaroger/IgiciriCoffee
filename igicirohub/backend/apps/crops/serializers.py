@@ -3,18 +3,20 @@ from .models import Crop, SavedCrop
 
 
 class CropSerializer(serializers.ModelSerializer):
-    farmer_id    = serializers.IntegerField(source='farmer.id',           read_only=True)
-    farmer_name  = serializers.CharField(source='farmer.display_name',    read_only=True)
-    farmer_phone = serializers.CharField(source='farmer.phone',           read_only=True)
+    farmer_id        = serializers.IntegerField(source='farmer.id',        read_only=True)
+    farmer_name      = serializers.CharField(source='farmer.display_name', read_only=True)
+    farmer_phone     = serializers.CharField(source='farmer.phone',        read_only=True)
     quantity_display = serializers.SerializerMethodField()
-    is_saved     = serializers.SerializerMethodField()
+    is_saved         = serializers.SerializerMethodField()
 
     class Meta:
         model  = Crop
-        fields = ['id', 'name', 'emoji', 'category', 'quantity', 'unit',
-                  'quantity_display', 'price', 'location', 'district',
-                  'description', 'status', 'farmer_id', 'farmer_name',
-                  'farmer_phone', 'is_saved', 'created_at', 'updated_at']
+        fields = [
+            'id', 'name', 'emoji', 'category', 'quantity', 'unit',
+            'quantity_display', 'price', 'location', 'district',
+            'description', 'status', 'farmer_id', 'farmer_name',
+            'farmer_phone', 'is_saved', 'created_at', 'updated_at',
+        ]
         read_only_fields = ['id', 'created_at', 'updated_at',
                             'farmer_id', 'farmer_name', 'farmer_phone']
 
