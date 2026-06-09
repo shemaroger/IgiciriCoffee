@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useAuth } from '../auth/AuthContext';
@@ -44,24 +44,39 @@ const AuthNavigator = () => (
 
 const AppNavigatorStack = () => (
   <AppStack.Navigator screenOptions={{ headerShown: false }}>
-    <AppStack.Screen name="MainTabs"        component={AppNavigator} />
-    <AppStack.Screen name="AddCrop"         component={AddCropScreen} />
-    <AppStack.Screen name="MyCrops"         component={MyCropsScreen} />
-    <AppStack.Screen name="Orders"          component={OrdersScreen} />
-    <AppStack.Screen name="SavedCrops"      component={SavedCropsScreen} />
-    <AppStack.Screen name="Settings"        component={SettingsScreen} />
-    <AppStack.Screen name="PriceDetail"     component={PriceDetailScreen} />
-    <AppStack.Screen name="CropDetail"      component={CropDetailScreen} />
-    <AppStack.Screen name="Chat"            component={ChatScreen} />
+    <AppStack.Screen name="MainTabs"         component={AppNavigator} />
+    <AppStack.Screen name="AddCrop"          component={AddCropScreen} />
+    <AppStack.Screen name="MyCrops"          component={MyCropsScreen} />
+    <AppStack.Screen name="Orders"           component={OrdersScreen} />
+    <AppStack.Screen name="SavedCrops"       component={SavedCropsScreen} />
+    <AppStack.Screen name="Settings"         component={SettingsScreen} />
+    <AppStack.Screen name="PriceDetail"      component={PriceDetailScreen} />
+    <AppStack.Screen name="CropDetail"       component={CropDetailScreen} />
+    <AppStack.Screen name="Chat"             component={ChatScreen} />
     <AppStack.Screen name="DiseaseDetection" component={DiseaseDetectionScreen} />
-    <AppStack.Screen name="Notifications"   component={NotificationsScreen} />
-    <AppStack.Screen name="VoiceAssistant"  component={VoiceAssistantScreen} />
-    <AppStack.Screen name="MessagePreview"  component={MessagePreviewScreen} />
+    <AppStack.Screen name="Notifications"    component={NotificationsScreen} />
+    <AppStack.Screen name="VoiceAssistant"   component={VoiceAssistantScreen} />
+    <AppStack.Screen name="MessagePreview"   component={MessagePreviewScreen} />
   </AppStack.Navigator>
 );
 
 export const RootNavigator = () => {
   const { session, isLoading } = useAuth();
+
+  useEffect(() => {
+    try {
+      const { Audio } = require('expo-av');
+      Audio.setAudioModeAsync({
+        allowsRecordingIOS:         false,
+        playsInSilentModeIOS:       true,
+        staysActiveInBackground:    false,
+        shouldDuckAndroid:          true,
+        playThroughEarpieceAndroid: false,
+      });
+    } catch (e) {
+      console.log('[Audio setup]', e);
+    }
+  }, []);
 
   if (isLoading) {
     return (

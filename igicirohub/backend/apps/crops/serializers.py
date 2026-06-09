@@ -3,22 +3,28 @@ from .models import Crop, SavedCrop
 
 
 class CropSerializer(serializers.ModelSerializer):
-    farmer_id        = serializers.IntegerField(source='farmer.id',        read_only=True)
-    farmer_name      = serializers.CharField(source='farmer.display_name', read_only=True)
-    farmer_phone     = serializers.CharField(source='farmer.phone',        read_only=True)
+    farmer_id        = serializers.IntegerField(source='farmer.id',           read_only=True)
+    farmer_name      = serializers.CharField(source='farmer.display_name',    read_only=True)
+    farmer_phone     = serializers.CharField(source='farmer.phone',           read_only=True)
+    farmer_district  = serializers.CharField(source='farmer.district',        read_only=True)
     quantity_display = serializers.SerializerMethodField()
     is_saved         = serializers.SerializerMethodField()
+    is_owner         = serializers.SerializerMethodField()
 
     class Meta:
         model  = Crop
         fields = [
             'id', 'name', 'emoji', 'category', 'quantity', 'unit',
             'quantity_display', 'price', 'location', 'district',
-            'description', 'status', 'farmer_id', 'farmer_name',
-            'farmer_phone', 'is_saved', 'created_at', 'updated_at',
+            'description', 'status',
+            'farmer_id', 'farmer_name', 'farmer_phone', 'farmer_district',
+            'is_saved', 'is_owner',
+            'created_at', 'updated_at',
         ]
-        read_only_fields = ['id', 'created_at', 'updated_at',
-                            'farmer_id', 'farmer_name', 'farmer_phone']
+        read_only_fields = [
+            'id', 'created_at', 'updated_at',
+            'farmer_id', 'farmer_name', 'farmer_phone', 'farmer_district',
+        ]
 
     def get_quantity_display(self, obj):
         return f"{obj.quantity} {obj.unit}"
@@ -29,12 +35,20 @@ class CropSerializer(serializers.ModelSerializer):
             return SavedCrop.objects.filter(user=request.user, crop=obj).exists()
         return False
 
+    def get_is_owner(self, obj):
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            return obj.farmer_id == request.user.id
+        return False
+
 
 class CropCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model  = Crop
-        fields = ['name', 'emoji', 'category', 'quantity', 'unit',
-                  'price', 'location', 'district', 'description', 'status']
+        fields = [
+            'name', 'emoji', 'category', 'quantity', 'unit',
+            'price', 'location', 'district', 'description', 'status',
+        ]
 
     def validate_price(self, v):
         if float(v) <= 0:
@@ -47,4 +61,7 @@ class CropCreateSerializer(serializers.ModelSerializer):
         return v
 
     def create(self, validated_data):
-        return Crop.objects.create(farmer=self.context['request'].user, **validated_data)
+        return Crop.objects.create(
+            farmer=self.context['request'].user,
+            **validated_data,
+        )

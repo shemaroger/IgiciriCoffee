@@ -97,7 +97,6 @@ def update_status(request, pk):
     crop.save()
     return Response(CropSerializer(crop, context={'request': request}).data)
 
-
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def saved_crops(request):
