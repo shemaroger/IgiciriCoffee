@@ -3,437 +3,296 @@ from datetime import datetime
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
-from rest_framework import status, viewsets
+from rest_framework import status
 from django.conf import settings
 from .models import PredictionHistory
 from .ml_engine import (
     predict_coffee_price, get_available_varieties,
-    get_all_districts, train_model, auto_update_prices,
-    VARIETIES, DISTRICTS, META_PATH,
+    get_seasons, get_price_types, get_trend_indicator,
+    train_model, auto_update_prices,
+    VARIETIES, META_PATH,
 )
 
-# =====================================================
-# COFFEE ASSISTANT IMPORTS
-# =====================================================
 
-from .gemini_service import get_gemini_service, reset_gemini_service
-import asyncio
-import logging
-
-logger = logging.getLogger(__name__)
-
-# =====================================================
-# COFFEE ASSISTANT VIEWSET
-# =====================================================
-
-class CoffeeAssistantViewSet(viewsets.ViewSet):
-    """ViewSet for Coffee Assistant with Gemini AI"""
-    
-    permission_classes = [AllowAny]
-
-    def ask(self, request):
-        """Ask coffee question to Gemini AI"""
-        try:
-            question = request.data.get('question')
-            category = request.data.get('category', 'General')
-            language = request.data.get('language', 'en')
-            history = request.data.get('history', [])
-
-            if not question:
-                return Response(
-                    {'error': 'Question is required'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-
-            service = get_gemini_service()
-            result = asyncio.run(
-                service.ask_question(
-                    question=question,
-                    category=category,
-                    language_code=language,
-                    conversation_history=history
-                )
-            )
-
-            if not result['success']:
-                return Response(
-                    {'success': False, 'answer': result['answer']},
-                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
-                )
-
-            return Response({
-                'success': True,
-                'answer': result['answer'],
-                'question': result['question'],
-                'category': result['category'],
-                'language': result['language'],
-                'model': result['model']
-            }, status=status.HTTP_200_OK)
-
-        except Exception as e:
-            logger.error(f"Error in coffee ask: {str(e)}")
-            return Response(
-                {'success': False, 'answer': 'An error occurred'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
-    def history(self, request):
-        """Get coffee conversation history"""
-        try:
-            service = get_gemini_service()
-            history = service.get_history()
-            
-            return Response({
-                'success': True,
-                'history': history,
-                'count': len(history)
-            }, status=status.HTTP_200_OK)
-
-        except Exception as e:
-            logger.error(f"Error getting history: {str(e)}")
-            return Response(
-                {'success': False, 'error': str(e)},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
-    def clear_history(self, request):
-        """Clear coffee conversation history"""
-        try:
-            reset_gemini_service()
-            
-            return Response({
-                'success': True,
-                'message': 'Conversation cleared'
-            }, status=status.HTTP_200_OK)
-
-        except Exception as e:
-            logger.error(f"Error clearing history: {str(e)}")
-            return Response(
-                {'success': False, 'error': str(e)},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
-
-# =====================================================
-# COFFEE ASSISTANT ENDPOINT FUNCTIONS
-# =====================================================
-
-@api_view(['POST'])
-@permission_classes([AllowAny])
-def ask_coffee_question(request):
-    """
-    Backward compatible endpoint for coffee questions
-    POST /api/predictions/ask/ with coffee question
-    """
-    try:
-        question = request.data.get('question')
-        category = request.data.get('category', 'General')
-        language = request.data.get('language', 'en')
-        history = request.data.get('history', [])
-
-        if not question:
-            return Response(
-                {'error': 'Question is required'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        service = get_gemini_service()
-        result = asyncio.run(
-            service.ask_question(
-                question=question,
-                category=category,
-                language_code=language,
-                conversation_history=history
-            )
-        )
-
-        if not result['success']:
-            return Response({
-                'success': False,
-                'answer': result['answer'],
-                'error': result.get('error')
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-        return Response({
-            'success': True,
-            'answer': result['answer'],
-            'question': result['question'],
-            'category': result['category'],
-            'language': result['language'],
-            'model': result['model']
-        }, status=status.HTTP_200_OK)
-
-    except Exception as e:
-        logger.error(f"Error in coffee ask: {str(e)}")
-        return Response({
-            'success': False,
-            'answer': 'An error occurred. Please try again.',
-            'error': str(e)
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
-@api_view(['GET'])
-@permission_classes([AllowAny])
-def get_conversation_history(request):
-    """Get coffee conversation history"""
-    try:
-        service = get_gemini_service()
-        history = service.get_history()
-
-        return Response({
-            'success': True,
-            'history': history,
-            'count': len(history)
-        }, status=status.HTTP_200_OK)
-
-    except Exception as e:
-        logger.error(f"Error getting history: {str(e)}")
-        return Response({
-            'success': False,
-            'error': str(e)
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
-@api_view(['POST'])
-@permission_classes([AllowAny])
-def clear_conversation(request):
-    """Clear coffee conversation history"""
-    try:
-        reset_gemini_service()
-
-        return Response({
-            'success': True,
-            'message': 'Conversation cleared'
-        }, status=status.HTTP_200_OK)
-
-    except Exception as e:
-        logger.error(f"Error clearing conversation: {str(e)}")
-        return Response({
-            'success': False,
-            'error': str(e)
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
-@api_view(['GET'])
-@permission_classes([AllowAny])
-def coffee_assistant_health(request):
-    """Health check for coffee assistant"""
-    try:
-        service = get_gemini_service()
-        return Response({
-            'success': True,
-            'status': 'healthy',
-            'service': 'Coffee Assistant',
-            'ai_model': 'Gemini 1.5 Flash',
-            'languages': ['en', 'rw'],
-            'categories': [
-                'Growing',
-                'Pricing & Markets',
-                'Processing',
-                'Quality & Grading',
-                'Health & Nutrition'
-            ]
-        }, status=status.HTTP_200_OK)
-
-    except Exception as e:
-        logger.error(f"Health check failed: {str(e)}")
-        return Response({
-            'success': False,
-            'status': 'unhealthy',
-            'error': str(e)
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
-# =====================================================
-# YOUR EXISTING PREDICTION ENDPOINTS (UNCHANGED)
-# =====================================================
-
-@api_view(['GET'])
-@permission_classes([AllowAny])
-def available_crops(request):
-    """Get available crops for prediction"""
-    return Response(get_available_varieties())
-
-
-@api_view(['GET'])
-@permission_classes([AllowAny])
-def regions(request):
-    """Get available regions/districts"""
-    return Response({
-        'districts': get_all_districts(),
-        'provinces': ['Northern', 'Southern', 'Western', 'Eastern', 'Kigali'],
-    })
-
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def run_prediction(request):
-    """Run ML price prediction for a crop"""
-    variety  = request.data.get('crop_name', 'Arabica Bourbon')
-    district = request.data.get('district', 'Huye')
-    horizon  = int(request.data.get('horizon_days', 30))
-    if variety not in VARIETIES:
-        variety = 'Arabica Bourbon'
-    if district not in DISTRICTS:
-        district = 'Huye'
-    result = predict_coffee_price(variety, district, horizon)
-    PredictionHistory.objects.create(
-        user=request.user,
-        crop_name=variety, district=district,
-        horizon_days=horizon,
-        current_price=result['current_farmgate_rwf'],
-        predicted_change=result['farmgate_change_pct'],
-        confidence=result['confidence'],
-        method=result['method'],
-        recommendation=result['recommendation'],
-    )
-    return Response({
-        'crop_name': variety, 'district': district,
-        'province': result['province'], 'altitude_m': result['altitude_m'],
-        'quality_factor': result['quality_factor'],
-        'current_price': result['current_farmgate_rwf'],
-        'current_farmgate_rwf': result['current_farmgate_rwf'],
-        'current_export_usd': result['current_export_usd'],
-        'predicted_farmgate_rwf': result['predicted_farmgate_rwf'],
-        'predicted_export_usd': result['predicted_export_usd'],
-        'predicted_change': result['farmgate_change_pct'],
-        'farmgate_change_pct': result['farmgate_change_pct'],
-        'export_change_pct': result['export_change_pct'],
-        'chart_data': result['chart_farmgate'],
-        'chart_farmgate': result['chart_farmgate'],
-        'chart_export': result['chart_export'],
-        'season': result['season'],
-        'confidence': result['confidence'],
-        'method': result['method'],
-        'recommendation': result['recommendation'],
-        'horizon_days': horizon,
-        'variety_type': result['variety_type'],
-        'category': result['category'],
-    })
-
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def prediction_history(request):
-    """Get user's prediction history"""
-    hist = PredictionHistory.objects.filter(user=request.user)[:20]
-    return Response([{
-        'id': h.id, 'crop_name': h.crop_name, 'district': h.district,
-        'horizon_days': h.horizon_days, 'current_price': str(h.current_price),
-        'predicted_change': str(h.predicted_change), 'confidence': h.confidence,
-        'method': h.method, 'recommendation': h.recommendation,
-        'created_at': h.created_at.isoformat(),
-    } for h in hist])
-
-
-@api_view(['POST'])
-@permission_classes([AllowAny])
-def update_market_prices(request):
-    """Auto-update all market prices using Random Forest ML predictions"""
-    from apps.prices.models import CropPrice
-    updates = auto_update_prices()
-    updated_count = 0
-    created_count = 0
-    for u in updates:
-        obj, created = CropPrice.objects.update_or_create(
-            name=u['variety_name'],
-            district=u['district'],
-            defaults={
-                'emoji':        u['emoji'],
-                'price':        u['farmgate_rwf'],
-                'export_usd':   u['export_usd'],
-                'unit':         'kg',
-                'change':       u['change'],
-                'trend':        u['trend'],
-                'variety_type': u['variety_type'],
-                'location':     u['district'],
-                'province':     u['province'],
-                'altitude_m':   u['altitude_m'],
-                'chart_data':   u['chart_data'],
-            }
-        )
-        if created:
-            created_count += 1
-        else:
-            updated_count += 1
-    return Response({
-        'message': 'Market prices updated using Random Forest ML.',
-        'updated': updated_count,
-        'created': created_count,
-        'total': len(updates),
-        'updated_at': datetime.now().isoformat(),
-        'algorithm': 'RandomForest',
-    })
-
-
-@api_view(['GET'])
-@permission_classes([AllowAny])
-def model_info(request):
-    """Get ML model information"""
-    if os.path.exists(META_PATH):
-        with open(META_PATH) as f:
-            meta = json.load(f)
-        return Response(meta)
-    return Response({'message': 'Model not trained yet. POST /predictions/train/ to train.'})
-
-
-# ── Shared price context helper ────────────────────────────────────────────
+# ── Helpers ────────────────────────────────────────────────────────────────
 
 def _get_price_context():
-    """Get current market prices for context"""
     from apps.prices.models import CropPrice
-    prices = CropPrice.objects.all()[:12]
+    prices = CropPrice.objects.all()[:10]
     return prices, '\n'.join(
-        f"- {p.emoji} {p.name} ({p.district}, {p.province}): "
-        f"{p.price} RWF/kg farm gate | ${p.export_usd}/kg export | "
-        f"{'+' if float(p.change) >= 0 else ''}{p.change}% {p.trend}"
+        f"- {p.emoji} {p.name}: "
+        f"Farm Gate {p.farmgate_rwf} RWF/kg | "
+        f"Cooperative {p.cooperative_rwf} RWF/kg | "
+        f"Export ${p.export_usd}/kg | "
+        f"{p.trend_label} | Season: {p.season}"
         for p in prices
     ) or "No price data available."
 
 
 def _get_system_context(language: str, price_context: str) -> str:
-    """Get system context for your assistant"""
-    return f"""You are IgiciroHub AI — expert agricultural advisor for Rwanda.
-You specialize in:
-- Coffee: Arabica Bourbon, Arabica Jackson, Robusta — prices, quality, processing, export
-- Cash crops: Tea/Icyayi, Pyrethrum/Umuravumba, Chili Pepper, Macadamia, Avocado/Avoka
-- Rwanda farming seasons and harvest calendars
-- Disease detection: Coffee Berry Disease, Leaf Rust, Antestia Bug, Tea Blister Blight, Wilt
-- Export markets, NAEB regulations, and buyer connections
-- Random Forest ML price predictions updated regularly
+    return f"""You are IgiciroHub AI — expert Rwanda coffee market advisor.
+
+Rwanda coffee varieties: Bourbon Arabica, Red Bourbon, Yellow Bourbon, Jackson, Mibirizi, Robusta.
+Price types:
+- Farm Gate: Price paid directly to farmer/cooperative at harvest
+- Cooperative: Higher price after collective processing and quality grading
+- Export: International market price in USD per kg green bean
+
+Seasons:
+- Season A (Mar-Jun): Main harvest — high supply, prices DROP
+- Season B (Oct-Nov): Fly crop — moderate supply and prices
+- Off Season (Jul-Sep, Dec-Feb): Low supply — prices RISE (best time to sell)
+
+Market Trend Indicators:
+- Rising ↑: Price increasing >3% — good time to hold stock
+- Stable →: Price steady within 1-3% change
+- Falling ↓: Price declining — consider selling sooner
+
+Key Rwanda Coffee Facts:
+- Top districts: Huye, Nyamasheke, Gakenke, Rulindo, Burera, Nyaruguru
+- Higher altitude (1700m+) = better quality = higher export premium
+- Fully washed > Natural process for specialty export
+- NAEB regulates all Rwanda coffee exports
+- Rwanda Arabica regularly scores SCA 85+ for specialty grade
 
 ALWAYS respond in {'Kinyarwanda' if language == 'rw' else 'English'}.
-Be helpful, practical, and encouraging. Keep answers 2-5 sentences unless detail is needed.
-Use the current market data below when answering price questions.
+Be practical and encouraging. Keep answers 2-5 sentences unless detail is needed.
 
-Current Rwanda Market Prices (Random Forest ML):
-{price_context}
-
-Rwanda Coffee Calendar:
-- Main harvest (Ibihangange): March-June → prices DROP (high supply)
-- Processing season: July-September → prices RISE
-- Fly crop (Imbuto nto): October-November → prices dip slightly
-- Off season: December-February → prices PEAK
-
-Key Facts:
-- Top coffee districts: Huye, Nyamasheke, Gakenke, Rulindo, Burera, Nyaruguru
-- Higher altitude (1700m+) = better quality = higher export price
-- Fully washed > Natural process for specialty export markets
-- NAEB regulates all Rwanda coffee exports
-- Rwanda Arabica Bourbon regularly scores 85+ SCA for specialty grade
-- Macadamia fetches $7-$10/kg — highest export value cash crop"""
+Current Rwanda Coffee Prices (Random Forest ML):
+{price_context}"""
 
 
-# ── Ask Assistant (simple, no history) ────────────────────────────────────
+def _rule_based(question, prices, language):
+    q = question.lower()
+
+    for p in prices:
+        if any(w in q for w in p.name.lower().split() if len(w) > 3):
+            if language == 'rw':
+                return (f"{p.emoji} {p.name}: Farm Gate {p.farmgate_rwf} RWF/kg | "
+                        f"Cooperative {p.cooperative_rwf} RWF/kg | ${p.export_usd}/kg kohereza. "
+                        f"Isoko: {p.trend_label}. Igisekuru: {p.season}.")
+            return (f"{p.emoji} {p.name} — Farm Gate: {p.farmgate_rwf} RWF/kg | "
+                    f"Cooperative: {p.cooperative_rwf} RWF/kg | Export: ${p.export_usd}/kg. "
+                    f"Market: {p.trend_label}. Season: {p.season}.")
+
+    if any(w in q for w in ['season', 'igihe', 'harvest', 'isarura', 'season a', 'season b', 'off season']):
+        if language == 'rw':
+            return ("Season A (Werurwe-Kamena): Isarura rinini — ibiciro bishuka kubera ubwinshi. "
+                    "Season B (Ukwakira-Ugushyingo): Imbuto nto — ibiciro hagati. "
+                    "Off Season: Ibiciro bizamuka — igihe cyiza cyo kugurisha kawa yakoye.")
+        return ("Season A (Mar-Jun): Main harvest — prices drop due to high supply. "
+                "Season B (Oct-Nov): Fly crop — moderate prices. "
+                "Off Season (Jul-Sep, Dec-Feb): Prices rise — best time to sell processed coffee.")
+
+    if any(w in q for w in ['farm gate', 'cooperative', 'export', 'price type', 'igiciro']):
+        if language == 'rw':
+            return ("Farm Gate: Igiciro umuhinzi ahabwa vuba nyuma y'isarura. "
+                    "Cooperative: Igiciro nyuma yo gutunganya kawa muri koperative — kiruta farm gate. "
+                    "Export: Igiciro cy'isoko mpuzamahanga mu dollar (USD/kg).")
+        return ("Farm Gate: Price paid directly to farmer at harvest — lowest but immediate. "
+                "Cooperative: Higher price after collective processing, quality sorting and grading. "
+                "Export: International green bean price in USD — highest value, requires NAEB certification.")
+
+    if any(w in q for w in ['trend', 'rising', 'falling', 'stable', 'market', 'isoko']):
+        if language == 'rw':
+            return ("Isoko rizamuka ↑ (>3%): Ibiciro bizamuka — fata akanya urabaza ngo ubone ibiciro byiza. "
+                    "Isoko rihagaze → (1-3%): Impinduka nto — igihe cyo kugurisha ni cyiza. "
+                    "Isoko rimanuka ↓ (<1%): Ibiciro bishuka — fikiria kugurisha vuba.")
+        return ("Rising Market ↑ (>3%): Prices increasing — consider waiting for better prices. "
+                "Stable Market → (1-3%): Prices steady — good time to sell at current rates. "
+                "Falling Market ↓ (<1%): Prices declining — sell sooner rather than later.")
+
+    if any(w in q for w in ['disease', 'pest', 'sick', 'indwara', 'bug', 'rust', 'cbd', 'wilt']):
+        if language == 'rw':
+            return ("Indwara zikunze gutera ikawa mu Rwanda: Coffee Berry Disease (CBD), "
+                    "Isuri ry'amababi (CLR), Inzoka ya Antestia, na Coffee Wilt. "
+                    "Koresha fungicide ya copper (Champ/Kocide) ku CBD na CLR vuba.")
+        return ("Common Rwanda coffee diseases: Coffee Berry Disease (CBD), Leaf Rust (CLR), "
+                "Antestia Bug, and Coffee Wilt. "
+                "Apply copper fungicide (Champ/Kocide) for CBD and CLR immediately. "
+                "Remove and destroy infected plants to prevent spread.")
+
+    if any(w in q for w in ['variety', 'bourbon', 'jackson', 'mibirizi', 'robusta', 'arabica']):
+        if language == 'rw':
+            return ("Ubwoko bw'ikawa mu Rwanda: Bourbon Arabica, Red Bourbon, Yellow Bourbon, "
+                    "Jackson, Mibirizi (Arabica), na Robusta. "
+                    "Red Bourbon na Yellow Bourbon ni iz'indashyikirwa cyane ku isoko mpuzamahanga.")
+        return ("Rwanda coffee varieties: Bourbon Arabica, Red Bourbon, Yellow Bourbon, Jackson, "
+                "Mibirizi (all Arabica), and Robusta. "
+                "Red Bourbon and Yellow Bourbon fetch the highest specialty export prices.")
+
+    if any(w in q for w in ['naeb', 'cooperative', 'ikoperative', 'export license']):
+        if language == 'rw':
+            return ("NAEB (National Agriculture Export Development Board) igenzura kohereza "
+                    "ibihingwa by'u Rwanda mu mahanga. "
+                    "Iyandikishe kuri NAEB kugirango ubone uruhushya rwo kohereza ikawa.")
+        return ("NAEB (National Agriculture Export Development Board) regulates Rwanda's coffee exports. "
+                "Register with NAEB to get your export license and connect with international buyers. "
+                "Cooperatives help farmers access better prices collectively.")
+
+    if language == 'rw':
+        return ("Nshobora gufasha ku birebana n'ibiciro by'ikawa (Farm Gate, Cooperative, Export), "
+                "igihe cy'isarura (Season A, B, Off Season), ubwoko bw'ikawa, "
+                "indwara, no kohereza mu mahanga. Baza ikibazo kirambuye.")
+    return ("I help with Rwanda coffee prices (Farm Gate, Cooperative, Export), "
+            "harvest seasons (A, B, Off Season), variety comparisons, "
+            "disease prevention, and export markets. Ask me anything!")
+
+
+# ── Available crops & seasons ──────────────────────────────────────────────
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def available_crops(request):
+    return Response(get_available_varieties())
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def seasons_list(request):
+    return Response({
+        'seasons':     get_seasons(),
+        'price_types': get_price_types(),
+    })
+
+
+# ── Run Prediction ─────────────────────────────────────────────────────────
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def run_prediction(request):
+    variety           = request.data.get('crop_name', 'Bourbon Arabica')
+    price_type        = request.data.get('price_type', 'Farm Gate')
+    horizon_days      = int(request.data.get('horizon_days', 30))
+    historical_months = int(request.data.get('historical_months', 6))
+
+    if variety not in VARIETIES:
+        variety = 'Bourbon Arabica'
+    if price_type not in ['Farm Gate', 'Cooperative', 'Export']:
+        price_type = 'Farm Gate'
+
+    result = predict_coffee_price(variety, price_type, horizon_days, historical_months)
+
+    PredictionHistory.objects.create(
+        user=request.user,
+        crop_name=variety,
+        district=price_type,
+        horizon_days=horizon_days,
+        current_price=result['current_price'],
+        predicted_change=result['change_pct'],
+        confidence=result['confidence'],
+        method=result['method'],
+        recommendation=result['recommendation'],
+    )
+
+    return Response({
+        'variety':               variety,
+        'variety_type':          result['variety_type'],
+        'emoji':                 result['emoji'],
+        'price_type':            price_type,
+        'price_unit':            result['price_unit'],
+        'current_price':         result['current_price'],
+        'predicted_price':       result['predicted_price'],
+        'change_pct':            result['change_pct'],
+        'trend':                 result['trend'],
+        'current_farmgate':      result['current_farmgate'],
+        'current_cooperative':   result['current_cooperative'],
+        'current_export_usd':    result['current_export_usd'],
+        'predicted_farmgate':    result['predicted_farmgate'],
+        'predicted_cooperative': result['predicted_cooperative'],
+        'predicted_export_usd':  result['predicted_export_usd'],
+        'chart_data':            result['chart_data'],
+        'chart_farmgate':        result['chart_farmgate'],
+        'chart_cooperative':     result['chart_cooperative'],
+        'chart_export':          result['chart_export'],
+        'season':                result['season'],
+        'season_description':    result['season_description'],
+        'confidence':            result['confidence'],
+        'method':                result['method'],
+        'recommendation':        result['recommendation'],
+        'horizon_days':          horizon_days,
+        'historical_months':     historical_months,
+    })
+
+
+# ── Prediction history ─────────────────────────────────────────────────────
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def prediction_history(request):
+    hist = PredictionHistory.objects.filter(user=request.user)[:20]
+    return Response([{
+        'id':               h.id,
+        'crop_name':        h.crop_name,
+        'price_type':       h.district,
+        'horizon_days':     h.horizon_days,
+        'current_price':    str(h.current_price),
+        'predicted_change': str(h.predicted_change),
+        'confidence':       h.confidence,
+        'method':           h.method,
+        'recommendation':   h.recommendation,
+        'created_at':       h.created_at.isoformat(),
+    } for h in hist])
+
+
+# ── Update market prices via ML ────────────────────────────────────────────
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def update_market_prices(request):
+    from apps.prices.models import CropPrice
+    updates = auto_update_prices()
+    updated = created = 0
+    for u in updates:
+        _, was_created = CropPrice.objects.update_or_create(
+            name=u['variety_name'],
+            defaults={
+                'emoji':           u['emoji'],
+                'variety_type':    u['variety_type'],
+                'farmgate_rwf':    u['farmgate_rwf'],
+                'cooperative_rwf': u['cooperative_rwf'],
+                'export_usd':      u['export_usd'],
+                'price':           u['farmgate_rwf'],
+                'unit':            'kg',
+                'change':          u['change'],
+                'trend':           u['trend'],
+                'trend_label':     u['trend_label'],
+                'season':          u['season'],
+                'chart_data':      u['chart_data'],
+            }
+        )
+        if was_created: created += 1
+        else: updated += 1
+    return Response({
+        'message':    'Coffee prices updated using Random Forest ML.',
+        'updated':    updated,
+        'created':    created,
+        'total':      len(updates),
+        'algorithm':  'RandomForest',
+        'updated_at': datetime.now().isoformat(),
+    })
+
+
+# ── Model info ─────────────────────────────────────────────────────────────
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def model_info(request):
+    if os.path.exists(META_PATH):
+        with open(META_PATH) as f:
+            return Response(json.load(f))
+    return Response({'message': 'Model not trained yet. POST /predictions/train/ to train.'})
+
+
+# ── Ask Assistant (single question) ───────────────────────────────────────
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def ask_assistant(request):
-    """Your existing agriculture assistant (not coffee-specific)"""
     question = request.data.get('question', '').strip()
     language = request.data.get('language', 'en')
     if not question:
-        return Response({'error': 'question is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'error': 'question is required.'}, status=400)
 
     prices, price_context = _get_price_context()
     system_prompt = _get_system_context(language, price_context)
@@ -451,29 +310,27 @@ def ask_assistant(request):
     return Response({'answer': _rule_based(question, prices, language), 'source': 'local'})
 
 
-# ── Voice Assistant (with conversation memory) ─────────────────────────────
+# ── Voice Assistant (multi-turn with memory) ───────────────────────────────
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def voice_assistant(request):
-    """
-    Your existing conversational AI assistant with memory
-    Full conversational AI assistant powered by Gemini with memory.
-    Maintains multi-turn conversation history for context-aware replies.
-    """
     question = request.data.get('question', '').strip()
     history  = request.data.get('history', [])
     language = request.data.get('language', 'en')
 
     if not question:
-        return Response({'error': 'question is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'error': 'question is required.'}, status=400)
 
     prices, price_context = _get_price_context()
     system_instruction = _get_system_context(language, price_context)
 
     if not settings.GEMINI_API_KEY:
-        answer = _rule_based(question, prices, language)
-        return Response({'answer': answer, 'source': 'local'})
+        return Response({
+            'answer':   _rule_based(question, prices, language),
+            'source':   'local',
+            'language': language,
+        })
 
     try:
         import google.generativeai as genai
@@ -484,164 +341,62 @@ def voice_assistant(request):
             system_instruction=system_instruction,
         )
 
-        # Build Gemini conversation history from previous turns
         gemini_history = []
         for msg in history[-10:]:
-            role = 'user' if msg.get('role') == 'user' else 'model'
+            role    = 'user' if msg.get('role') == 'user' else 'model'
             content = msg.get('content', '').strip()
             if content:
                 gemini_history.append({'role': role, 'parts': [content]})
 
-        chat = model.start_chat(history=gemini_history)
-        response_obj = chat.send_message(question)
-        answer = response_obj.text.strip()
+        chat     = model.start_chat(history=gemini_history)
+        response = chat.send_message(question)
 
         return Response({
-            'answer':   answer,
+            'answer':   response.text.strip(),
             'source':   'gemini',
             'language': language,
             'model':    'gemini-1.5-flash',
         })
 
     except Exception as e:
-        print(f"[Gemini voice] Error: {e}")
-        answer = _rule_based(question, prices, language)
+        print(f"[Gemini voice] {e}")
         return Response({
-            'answer':   answer,
+            'answer':   _rule_based(question, prices, language),
             'source':   'local_fallback',
             'language': language,
         })
-
-
-# ── Rule-based fallback ────────────────────────────────────────────────────
-
-def _rule_based(question, prices, language):
-    """Rule-based fallback when Gemini is not available"""
-    q = question.lower()
-
-    for p in prices:
-        if any(w in q for w in p.name.lower().split() if len(w) > 3):
-            if language == 'rw':
-                return (f"{p.emoji} {p.name} ({p.district}) iracuruzwa ku {p.price} RWF/kg. "
-                        f"Igiciro cy'ohereza ni ${p.export_usd}/kg. "
-                        f"Impinduka: {p.change:+.1f}% ({p.trend}).")
-            return (f"{p.emoji} {p.name} ({p.district}): {p.price} RWF/kg farm gate | "
-                    f"${p.export_usd}/kg export. Change: {p.change:+.1f}% ({p.trend}). "
-                    f"Updated by Random Forest ML.")
-
-    if any(w in q for w in ['harvest', 'season', 'igihe', 'gusarura', 'isarura']):
-        if language == 'rw':
-            return ("Igihe cy'isarura ry'ibihangange ni Werurwe-Kamena (ibiciro bishuka). "
-                    "Icyayi gisarurwa cyane Werurwe-Gicurasi. "
-                    "Igihe cyiza cyo kugurisha ni Nyakanga-Nzeli (ibiciro bizamuka).")
-        return ("Coffee main harvest March-June (prices drop), fly crop October-November. "
-                "Tea peaks March-May. Best time to sell processed coffee is July-September "
-                "when prices rise in the off-season.")
-
-    if any(w in q for w in ['export', 'usd', 'dollar', 'ohereza', 'kohereza']):
-        if language == 'rw':
-            return ("Arabica Bourbon: $4-$7/kg. Icyayi: $1.5-$2.5/kg. "
-                    "Macadamia: $7-$10/kg — ni igihingwa cy'indashyikirwa cyane. "
-                    "Ibiciro biravugururwa buri gihe na Random Forest ML.")
-        return ("Export: Arabica Bourbon $4-$7/kg, Tea $1.5-$2.5/kg, "
-                "Macadamia $7-$10/kg, Pyrethrum $3-$4/kg, Chili $4-$6/kg. "
-                "Contact NAEB for export licensing and buyer connections.")
-
-    if any(w in q for w in ['disease', 'pest', 'sick', 'indwara', 'bug', 'rust', 'cbd']):
-        if language == 'rw':
-            return ("Indwara zikunze gutera ikawa: Coffee Berry Disease (CBD), Isuri ry'amababi (CLR), "
-                    "Inzoka ya Antestia, na Coffee Wilt. "
-                    "Koresha fungicide ya copper (Champ/Kocide) ku CBD na CLR. "
-                    "Simbura ibimera byangiritse vuba.")
-        return ("Common Rwanda coffee diseases: Coffee Berry Disease (CBD), Leaf Rust (CLR), "
-                "Antestia Bug, and Coffee Wilt. "
-                "Apply copper fungicide (Champ/Kocide) for CBD and CLR. "
-                "Remove and destroy infected plants immediately to prevent spread.")
-
-    if any(w in q for w in ['quality', 'ubwiza', 'grade', 'washed', 'specialty', 'sca']):
-        if language == 'rw':
-            return ("Ikawa y'u Rwanda ni iziranye ku isi kubera ubutumburuke bw'uturere (1400-1850m). "
-                    "Ikawa isukuwe neza (fully washed) itera ibiciro byiza kuruta natural process. "
-                    "Uturere nka Huye na Nyamasheke bigira amanota ya SCA 85+ ku isoko ry'ibihingwa byiza.")
-        return ("Rwanda coffee is world-class due to high altitude (1400-1850m). "
-                "Fully washed processing commands premium prices over natural. "
-                "Huye and Nyamasheke regularly score SCA 85+ for specialty markets in Europe and Japan.")
-
-    if any(w in q for w in ['naeb', 'cooperative', 'ikoperative', 'organization']):
-        if language == 'rw':
-            return ("NAEB (National Agriculture Export Development Board) igenzura kohereza "
-                    "ibihingwa by'u Rwanda mu mahanga. "
-                    "Ikopeative igufasha gutunga hamwe, kugeraho amasoko, no kubona ibiciro byiza. "
-                    "Iyandikishe kuri NAEB kugirango ubone uruhushya rwo kohereza.")
-        return ("NAEB (National Agriculture Export Development Board) regulates Rwanda's agricultural exports. "
-                "Cooperatives help farmers access better markets and prices collectively. "
-                "Register with NAEB to get your export license and connect with international buyers.")
-
-    if any(w in q for w in ['altitude', 'ubutumburuke', 'district', 'akarere', 'province']):
-        if language == 'rw':
-            return ("Uturere two hejuru (Burera 1850m, Nyamasheke 1700m, Huye 1700m) tugira ikawa nziza cyane. "
-                    "Ubutumburuke butera ko ikawa iguye niko, ifite uburemere bwinshi, "
-                    "kandi ifite uburyohe bwiza bwo koherezwa mu mahanga.")
-        return ("High altitude districts produce the best coffee: Burera (1850m), Gakenke (1800m), "
-                "Nyamasheke and Huye (1700m). Greater altitude means slower cherry development, "
-                "denser beans, and more complex flavors — commanding higher export premiums.")
-
-    if any(w in q for w in ['price', 'ibiciro', 'cost', 'sell', 'kugurisha', 'market']):
-        if language == 'rw':
-            return ("Ibiciro by'ikawa biravugururwa buri gihe hakoreshejwe Random Forest ML. "
-                    "Ubu Arabica Bourbon ni hagati ya 1500-1900 RWF/kg kuri farm gate. "
-                    "Reba igenamigambi ry'ibiciro kuri screen ya Prices.")
-        return ("Coffee prices are continuously updated using Random Forest ML. "
-                "Current Arabica Bourbon ranges 1500-1900 RWF/kg farm gate depending on district. "
-                "Check the Prices screen for live ML-updated prices and trends.")
-
-    # Default
-    if language == 'rw':
-        return ("Nshobora gufasha ku birebana n'ibiciro by'ikawa na cash crops, igihe cy'isarura, "
-                "ubwiza bw'isarura, kohereza mu mahanga, no kurwanya indwara. "
-                "Baza ikibazo kirambuye.")
-    return ("I can help with Rwanda coffee and cash crop prices, harvest seasons, "
-            "quality grades, export markets, disease prevention, and ML price predictions. "
-            "Ask me anything!")
 
 
 # ── Disease Detection ──────────────────────────────────────────────────────
 
 DISEASE_DB = {
     'cbd': {
-        'name': 'Coffee Berry Disease (CBD)',
-        'symptoms': 'Dark brown/black lesions on coffee berries, mummified fruit',
-        'treatment': 'Apply Champ or Kocide fungicide. Remove and destroy infected berries immediately.',
-        'prevention': 'Use resistant varieties (Batian), proper plant spacing, avoid overwatering.',
-        'severity': 'High',
+        'name':       'Coffee Berry Disease (CBD)',
+        'symptoms':   'Dark brown/black lesions on coffee berries, mummified fruit',
+        'treatment':  'Apply Champ or Kocide fungicide. Remove and destroy infected berries immediately.',
+        'prevention': 'Use resistant varieties, proper plant spacing, avoid overwatering.',
+        'severity':   'High',
     },
     'clr': {
-        'name': 'Coffee Leaf Rust (CLR)',
-        'symptoms': 'Yellow-orange powdery spots on underside of leaves, defoliation',
-        'treatment': 'Apply triazole or copper-based fungicide. Remove severely affected leaves.',
-        'prevention': 'Plant resistant varieties, maintain proper shade, avoid dense planting.',
-        'severity': 'High',
+        'name':       'Coffee Leaf Rust (CLR)',
+        'symptoms':   'Yellow-orange powdery spots on underside of leaves, defoliation',
+        'treatment':  'Apply triazole or copper-based fungicide.',
+        'prevention': 'Plant resistant varieties, maintain proper shade.',
+        'severity':   'High',
     },
     'antestia': {
-        'name': 'Antestia Bug',
-        'symptoms': 'Deformed berries, characteristic potato taste defect in cup',
-        'treatment': 'Apply Malathion or pyrethroid insecticide. Hand-pick and destroy affected berries.',
-        'prevention': 'Maintain shade trees, remove infected berries promptly, use sticky traps.',
-        'severity': 'High',
-    },
-    'blister': {
-        'name': 'Tea Blister Blight',
-        'symptoms': 'Translucent blisters on young tea leaves, distortion and browning',
-        'treatment': 'Apply copper-based fungicide. Avoid overhead irrigation during humid periods.',
-        'prevention': 'Proper plant spacing, good drainage, avoid wounding young leaves.',
-        'severity': 'Medium',
+        'name':       'Antestia Bug',
+        'symptoms':   'Deformed berries, characteristic potato taste defect in cup',
+        'treatment':  'Apply Malathion or pyrethroid insecticide.',
+        'prevention': 'Maintain shade trees, remove infected berries, use sticky traps.',
+        'severity':   'High',
     },
     'wilt': {
-        'name': 'Coffee Wilt Disease (Gibberella)',
-        'symptoms': 'Sudden wilting of branches, yellowing leaves, brown vascular discoloration',
-        'treatment': 'No chemical cure. Remove and destroy infected plants immediately.',
-        'prevention': 'Use certified disease-free seedlings, avoid wounding roots, maintain soil health.',
-        'severity': 'High',
+        'name':       'Coffee Wilt Disease',
+        'symptoms':   'Sudden wilting of branches, yellowing leaves, brown vascular discoloration',
+        'treatment':  'No chemical cure. Remove and destroy infected plants immediately.',
+        'prevention': 'Use certified disease-free seedlings, avoid wounding roots.',
+        'severity':   'High',
     },
 }
 
@@ -649,95 +404,67 @@ DISEASE_DB = {
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def detect_disease(request):
-    """Detect crop diseases using image analysis"""
     image_b64 = request.data.get('image_base64', '')
-    crop_name = request.data.get('crop_name', 'Coffee (Arabica)')
+    crop_name = request.data.get('crop_name', 'Coffee')
     mime_type = request.data.get('mime_type', 'image/jpeg')
     if not image_b64:
-        return Response({'error': 'image_base64 required.'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'error': 'image_base64 required.'}, status=400)
 
     if settings.GEMINI_API_KEY:
         try:
             import google.generativeai as genai
             genai.configure(api_key=settings.GEMINI_API_KEY)
-            model = genai.GenerativeModel('gemini-1.5-flash')
-            prompt = f"""Analyze this Rwanda {crop_name} plant image carefully.
-Look for diseases common in Rwanda:
-- Coffee Berry Disease (CBD): dark lesions on berries
-- Coffee Leaf Rust (CLR): yellow-orange powdery spots on leaf underside
-- Antestia Bug damage: deformed berries
-- Coffee Wilt: sudden wilting, brown stems
-- Tea Blister Blight: blisters on young tea leaves
-- Any other visible disease or pest damage
-
-Respond ONLY with valid JSON (no markdown, no explanation):
+            model    = genai.GenerativeModel('gemini-1.5-flash')
+            prompt   = f"""Analyze this Rwanda {crop_name} plant image.
+Look for: Coffee Berry Disease, Leaf Rust, Antestia Bug, Coffee Wilt.
+Respond ONLY with valid JSON (no markdown):
 {{
   "healthy": true or false,
-  "disease_name": "disease name or null if healthy",
+  "disease_name": "name or null",
   "confidence": "High or Medium or Low",
   "severity": "High or Medium or Low or None",
-  "symptoms": "brief description of what you see",
-  "treatment": "specific treatment recommendations for Rwanda",
+  "symptoms": "what you see",
+  "treatment": "Rwanda-specific treatment",
   "prevention": "prevention tips"
 }}"""
             img_data = base64.b64decode(image_b64)
-            response = model.generate_content([
-                prompt,
-                {'mime_type': mime_type, 'data': img_data},
-            ])
+            response = model.generate_content([prompt, {'mime_type': mime_type, 'data': img_data}])
             raw = response.text.strip()
-            # Clean markdown fences if present
             if '```' in raw:
                 raw = raw.split('```')[1]
-                if raw.startswith('json'):
-                    raw = raw[4:]
+                if raw.startswith('json'): raw = raw[4:]
             result = json.loads(raw.strip())
-            result.update({
-                'source':    'gemini_vision',
-                'crop':      crop_name,
-                'timestamp': datetime.now().isoformat(),
-            })
+            result.update({'source': 'gemini_vision', 'crop': crop_name, 'timestamp': datetime.now().isoformat()})
             return Response(result)
         except Exception as e:
-            print(f"[Disease Gemini] {e}")
+            print(f"[Disease] {e}")
 
     import random as rnd, datetime as dt
     if rnd.random() > 0.45:
         return Response({
-            'healthy':     True,
-            'disease_name': None,
-            'confidence':  'Medium',
-            'severity':    'None',
-            'symptoms':    'No visible disease symptoms detected on the plant.',
-            'treatment':   'Continue regular care and monitoring. Check again in 2 weeks.',
-            'prevention':  'Maintain proper shade, plant spacing, and balanced fertilization.',
-            'source':      'local_database',
-            'crop':        crop_name,
-            'timestamp':   dt.datetime.now().isoformat(),
+            'healthy': True, 'disease_name': None, 'confidence': 'Medium',
+            'severity': 'None', 'symptoms': 'No visible disease symptoms.',
+            'treatment': 'Continue regular care. Monitor weekly.',
+            'prevention': 'Maintain proper shade, spacing, fertilization.',
+            'source': 'local_database', 'crop': crop_name,
+            'timestamp': dt.datetime.now().isoformat(),
         })
     d = rnd.choice(list(DISEASE_DB.values()))
     return Response({
-        'healthy':     False,
-        'disease_name': d['name'],
-        'confidence':  'Medium',
-        'severity':    d['severity'],
-        'symptoms':    d['symptoms'],
-        'treatment':   d['treatment'],
-        'prevention':  d['prevention'],
-        'source':      'local_database',
-        'crop':        crop_name,
-        'timestamp':   dt.datetime.now().isoformat(),
+        'healthy': False, 'disease_name': d['name'], 'confidence': 'Medium',
+        'severity': d['severity'], 'symptoms': d['symptoms'],
+        'treatment': d['treatment'], 'prevention': d['prevention'],
+        'source': 'local_database', 'crop': crop_name,
+        'timestamp': dt.datetime.now().isoformat(),
     })
 
+
+# ── Train model ────────────────────────────────────────────────────────────
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def train_ml_model(request):
-    """Train the Random Forest ML model"""
     fg, ex, sc = train_model()
     if fg:
-        return Response({
-            'message':   'Random Forest model trained successfully.',
-            'algorithm': 'RandomForest',
-        })
+        return Response({'message': 'Random Forest trained for 6 coffee varieties.', 'algorithm': 'RandomForest'})
     return Response({'error': 'Training failed.'}, status=500)

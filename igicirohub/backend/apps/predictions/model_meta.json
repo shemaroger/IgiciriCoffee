@@ -1,38 +1,24 @@
 {
   "algorithm": "RandomForest",
   "n_estimators": 200,
-  "trained_at": "2026-06-07T15:49:37.352432",
-  "n_samples": 3840,
+  "trained_at": "2026-06-09T11:01:21.864270",
+  "n_samples": 144,
   "varieties": [
-    "Arabica Bourbon",
-    "Arabica Jackson",
-    "Robusta",
-    "Tea (Icyayi)",
-    "Pyrethrum (Umuravumba)",
-    "Chili Pepper (Urusenda rw'umunyu)",
-    "Macadamia",
-    "Avocado (Avoka)"
+    "Bourbon Arabica",
+    "Red Bourbon",
+    "Yellow Bourbon",
+    "Jackson",
+    "Mibirizi",
+    "Robusta"
   ],
-  "districts": [
-    "Gakenke",
-    "Rulindo",
-    "Gicumbi",
-    "Burera",
-    "Huye",
-    "Nyaruguru",
-    "Gisagara",
-    "Ruhango",
-    "Nyanza",
-    "Muhanga",
-    "Nyamasheke",
-    "Karongi",
-    "Rusizi",
-    "Rutsiro",
-    "Nyabihu",
-    "Ngoma",
-    "Kirehe",
-    "Kayonza",
-    "Gasabo",
-    "Kicukiro"
+  "seasons": [
+    "Season A",
+    "Season B",
+    "Off Season"
+  ],
+  "price_types": [
+    "Farm Gate",
+    "Cooperative",
+    "Export"
   ]
 }
