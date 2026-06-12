@@ -27,7 +27,7 @@ const COFFEE_VARIETIES = [
 ];
 
 const PRICE_TYPES = [
-  { key: 'Farm Gate',   label: '🌱 Farm Gate',   desc: 'Price paid to farmer' },
+  { key: 'Coffee Price',   label: '🫘 Coffee Price',   desc: 'Price paid to farmer' },
   { key: 'Cooperative', label: '🤝 Cooperative', desc: 'After processing' },
   { key: 'Export',      label: '🌍 Export (USD)', desc: 'International price' },
 ];

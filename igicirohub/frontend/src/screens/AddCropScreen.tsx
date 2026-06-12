@@ -4,7 +4,7 @@ import {
   ScrollView, Modal, FlatList, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
-import { ArrowLeft, ChevronDown, MapPin, Tag, FileText, Hash } from 'lucide-react-native';
+import { ArrowLeft, ChevronDown } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { GradientButton } from '../components/GradientButton';
 import { useTheme } from '../theme/ThemeContext';
@@ -13,10 +13,27 @@ import { FONT, RADIUS, SHADOWS, SPACING } from '../theme/tokens';
 import { api } from '../services/api';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-const CATEGORIES = ['other', 'vegetables', 'grains', 'fruits', 'tubers', 'legumes'];
-const UNITS      = ['kg', 'bunch', 'bag', 'tonne', 'crate', 'box'];
-const STATUSES   = ['listed', 'harvesting', 'sold', 'inactive'];
-const EMOJIS     = ['☕', '🫘', '🍃', '🌼', '🌶️', '🥜', '🥑', '🥔', '🌽', '🍅', '🥕', '🍌', '🍚', '🌾', '🥦', '🍎', '🌱', '🫑'];
+// ── Coffee ONLY ────────────────────────────────────────────────────────────
+const COFFEE_VARIETIES = [
+  { name: 'Bourbon Arabica', emoji: '☕', type: 'arabica' },
+  { name: 'Red Bourbon',     emoji: '☕', type: 'arabica' },
+  { name: 'Yellow Bourbon',  emoji: '☕', type: 'arabica' },
+  { name: 'Jackson',         emoji: '☕', type: 'arabica' },
+  { name: 'Mibirizi',        emoji: '☕', type: 'arabica' },
+  { name: 'Robusta',         emoji: '🫘', type: 'robusta' },
+];
+
+const PROCESSING_TYPES = [
+  'Cherry (Fresh)',
+  'Parchment (Dried)',
+  'Green Bean (Export)',
+  'Fully Washed',
+  'Natural Process',
+  'Honey Process',
+];
+
+const UNITS    = ['kg', 'bag', 'tonne'];
+const STATUSES = ['listed', 'harvesting', 'sold', 'inactive'];
 
 // ── Defined OUTSIDE to prevent letter-by-letter input bug ─────────────────
 const Field = ({ label, value, onChangeText, colors, style, ...props }: any) => (
@@ -45,7 +62,7 @@ const PickerField = ({ label, value, colors, onPress }: any) => (
       style={[s.dropdown, { backgroundColor: colors.surfaceVariant, borderColor: colors.border }]}
     >
       <Text style={{ fontFamily: FONT.medium, fontSize: 14, color: colors.text, flex: 1 }}>
-        {value.charAt(0).toUpperCase() + value.slice(1)}
+        {value}
       </Text>
       <ChevronDown size={16} color={colors.textMuted} />
     </TouchableOpacity>
@@ -57,33 +74,35 @@ export const AddCropScreen = ({ navigation }: any) => {
   const { showToast } = useAppToast();
   const insets = useSafeAreaInsets();
 
-  const [name, setName]         = useState('');
-  const [emoji, setEmoji]       = useState('☕');
-  const [category, setCategory] = useState('other');
-  const [qty, setQty]           = useState('');
-  const [unit, setUnit]         = useState('kg');
-  const [price, setPrice]       = useState('');
-  const [location, setLocation] = useState('');
-  const [district, setDistrict] = useState('');
-  const [description, setDesc]  = useState('');
-  const [status, setStatus]     = useState('listed');
-  const [loading, setLoading]   = useState(false);
-  const [picker, setPicker]     = useState<any>(null);
+  const [variety, setVariety]       = useState(COFFEE_VARIETIES[0]);
+  const [processing, setProcessing] = useState(PROCESSING_TYPES[0]);
+  const [qty, setQty]               = useState('');
+  const [unit, setUnit]             = useState('kg');
+  const [price, setPrice]           = useState('');
+  const [location, setLocation]     = useState('');
+  const [district, setDistrict]     = useState('');
+  const [description, setDesc]      = useState('');
+  const [status, setStatus]         = useState('listed');
+  const [loading, setLoading]       = useState(false);
+  const [picker, setPicker]         = useState<any>(null);
 
   const handlePost = async () => {
-    if (!name.trim())     { showToast('Name is required', 'error'); return; }
     if (!qty)             { showToast('Quantity is required', 'error'); return; }
     if (!price)           { showToast('Price is required', 'error'); return; }
     if (!location.trim()) { showToast('Location is required', 'error'); return; }
 
     setLoading(true);
     const { error } = await api.post<any>('/crops/create/', {
-      name: name.trim(), emoji, category,
-      quantity: parseFloat(qty), unit,
-      price: parseFloat(price),
-      location: location.trim(),
-      district: district.trim() || location.trim(),
-      description: description.trim(),
+      name:        `${variety.name} — ${processing}`,
+      emoji:       variety.emoji,
+      category:    'other',
+      quantity:    parseFloat(qty),
+      unit,
+      price:       parseFloat(price),
+      location:    location.trim(),
+      district:    district.trim() || location.trim(),
+      description: description.trim() ||
+        `${variety.name} coffee, ${processing}. ${variety.type === 'arabica' ? 'Arabica' : 'Robusta'} variety.`,
       status,
     });
     setLoading(false);
@@ -91,9 +110,10 @@ export const AddCropScreen = ({ navigation }: any) => {
     if (error) { showToast(error, 'error'); return; }
 
     showToast('Listing posted! ☕', 'success');
-    setName(''); setQty(''); setPrice('');
+    setQty(''); setPrice('');
     setLocation(''); setDistrict(''); setDesc('');
-    setEmoji('☕'); setCategory('other');
+    setVariety(COFFEE_VARIETIES[0]);
+    setProcessing(PROCESSING_TYPES[0]);
     setUnit('kg'); setStatus('listed');
     navigation.goBack();
   };
@@ -112,8 +132,8 @@ export const AddCropScreen = ({ navigation }: any) => {
           <ArrowLeft size={20} color="#fff" />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
-          <Text style={s.headerTitle}>New Listing ☕</Text>
-          <Text style={s.headerSub}>Post your coffee or cash crop</Text>
+          <Text style={s.headerTitle}>New Coffee Listing ☕</Text>
+          <Text style={s.headerSub}>Post your coffee for buyers</Text>
         </View>
       </LinearGradient>
 
@@ -123,47 +143,64 @@ export const AddCropScreen = ({ navigation }: any) => {
         keyboardShouldPersistTaps="handled"
       >
 
-        {/* ── Section 1: Basic Info ── */}
+        {/* ── Section 1: Coffee Variety ── */}
         <Animated.View entering={FadeInDown.duration(400)} style={[s.section, { backgroundColor: colors.surface }, SHADOWS.sm]}>
-          <Text style={[s.sectionTitle, { color: colors.text }]}>📋 Basic Info</Text>
-          <View style={{ gap: 14 }}>
-            <Field
-              label="Crop / Product Name *"
-              placeholder="e.g. Arabica Bourbon Cherry"
-              value={name}
-              onChangeText={setName}
-              colors={colors}
-            />
-
-            <View style={{ gap: 6 }}>
-              <Text style={[s.label, { color: colors.textSecondary }]}>Select Emoji</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                {EMOJIS.map(e => (
-                  <TouchableOpacity
-                    key={e}
-                    onPress={() => setEmoji(e)}
-                    style={[s.emojiBtn, {
-                      backgroundColor: emoji === e ? colors.primary + '20' : colors.surfaceVariant,
-                      borderColor: emoji === e ? colors.primary : colors.border,
-                    }]}
-                  >
-                    <Text style={{ fontSize: 22 }}>{e}</Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            </View>
-
-            <PickerField
-              label="Category"
-              value={category}
-              colors={colors}
-              onPress={() => setPicker({ label: 'Category', options: CATEGORIES, onSelect: setCategory })}
-            />
+          <Text style={[s.sectionTitle, { color: colors.text }]}>☕ Select Variety</Text>
+          <View style={{ gap: 8 }}>
+            {COFFEE_VARIETIES.map((v) => (
+              <TouchableOpacity
+                key={v.name}
+                onPress={() => setVariety(v)}
+                style={[s.varietyRow, {
+                  backgroundColor: variety.name === v.name ? colors.primary + '12' : colors.surfaceVariant,
+                  borderColor:     variety.name === v.name ? colors.primary : 'transparent',
+                }]}
+              >
+                <Text style={{ fontSize: 22 }}>{v.emoji}</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={{
+                    fontSize: 14, fontFamily: FONT.semibold,
+                    color: variety.name === v.name ? colors.primary : colors.text,
+                  }}>
+                    {v.name}
+                  </Text>
+                  <Text style={{ fontSize: 11, fontFamily: FONT.regular, color: colors.textMuted }}>
+                    {v.type === 'robusta' ? 'Robusta variety' : 'Arabica variety'}
+                  </Text>
+                </View>
+                {variety.name === v.name && (
+                  <View style={[s.checkCircle, { backgroundColor: colors.primary }]}>
+                    <Text style={{ color: '#fff', fontSize: 12 }}>✓</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            ))}
           </View>
         </Animated.View>
 
-        {/* ── Section 2: Quantity & Price ── */}
+        {/* ── Section 2: Processing Type ── */}
         <Animated.View entering={FadeInDown.delay(100).duration(400)} style={[s.section, { backgroundColor: colors.surface }, SHADOWS.sm]}>
+          <Text style={[s.sectionTitle, { color: colors.text }]}>📦 Processing Type</Text>
+          <PickerField
+            label="How is the coffee processed?"
+            value={processing}
+            colors={colors}
+            onPress={() => setPicker({ label: 'Processing Type', options: PROCESSING_TYPES, onSelect: setProcessing })}
+          />
+
+          {/* Listing preview */}
+          <View style={[s.previewBox, { backgroundColor: colors.primary + '10', marginTop: 12 }]}>
+            <Text style={{ fontSize: 11, fontFamily: FONT.regular, color: colors.textSecondary }}>
+              Listing name preview:
+            </Text>
+            <Text style={{ fontSize: 14, fontFamily: FONT.semibold, color: colors.primary, marginTop: 2 }}>
+              {variety.emoji} {variety.name} — {processing}
+            </Text>
+          </View>
+        </Animated.View>
+
+        {/* ── Section 3: Quantity & Price ── */}
+        <Animated.View entering={FadeInDown.delay(200).duration(400)} style={[s.section, { backgroundColor: colors.surface }, SHADOWS.sm]}>
           <Text style={[s.sectionTitle, { color: colors.text }]}>💰 Quantity & Price</Text>
           <View style={{ gap: 14 }}>
             <View style={{ flexDirection: 'row', gap: 12 }}>
@@ -188,7 +225,7 @@ export const AddCropScreen = ({ navigation }: any) => {
             </View>
 
             <Field
-              label="Price per unit (RWF) *"
+              label="Farm Gate Price (RWF/kg) *"
               placeholder="e.g. 1580"
               value={price}
               onChangeText={setPrice}
@@ -196,25 +233,25 @@ export const AddCropScreen = ({ navigation }: any) => {
               keyboardType="numeric"
             />
 
-            {price ? (
-              <View style={[s.pricePreview, { backgroundColor: colors.primary + '10' }]}>
-                <Text style={{ fontSize: 12, fontFamily: FONT.regular, color: colors.textSecondary }}>
-                  Preview:
+            {price && qty ? (
+              <View style={[s.previewBox, { backgroundColor: colors.success + '10' }]}>
+                <Text style={{ fontSize: 11, fontFamily: FONT.regular, color: colors.textSecondary }}>
+                  Total estimated value:
                 </Text>
-                <Text style={{ fontSize: 14, fontFamily: FONT.semibold, color: colors.primary }}>
-                  {emoji} {name || 'Your crop'} — {price} RWF/{unit}
+                <Text style={{ fontSize: 14, fontFamily: FONT.semibold, color: colors.success, marginTop: 2 }}>
+                  {(parseFloat(qty) * parseFloat(price)).toLocaleString()} RWF
                 </Text>
               </View>
             ) : null}
           </View>
         </Animated.View>
 
-        {/* ── Section 3: Location ── */}
-        <Animated.View entering={FadeInDown.delay(200).duration(400)} style={[s.section, { backgroundColor: colors.surface }, SHADOWS.sm]}>
+        {/* ── Section 4: Location ── */}
+        <Animated.View entering={FadeInDown.delay(300).duration(400)} style={[s.section, { backgroundColor: colors.surface }, SHADOWS.sm]}>
           <Text style={[s.sectionTitle, { color: colors.text }]}>📍 Location</Text>
           <View style={{ gap: 14 }}>
             <Field
-              label="Location / Village *"
+              label="Village / Sector *"
               placeholder="e.g. Huye Town"
               value={location}
               onChangeText={setLocation}
@@ -230,13 +267,13 @@ export const AddCropScreen = ({ navigation }: any) => {
           </View>
         </Animated.View>
 
-        {/* ── Section 4: Description & Status ── */}
-        <Animated.View entering={FadeInDown.delay(300).duration(400)} style={[s.section, { backgroundColor: colors.surface }, SHADOWS.sm]}>
+        {/* ── Section 5: Details ── */}
+        <Animated.View entering={FadeInDown.delay(400).duration(400)} style={[s.section, { backgroundColor: colors.surface }, SHADOWS.sm]}>
           <Text style={[s.sectionTitle, { color: colors.text }]}>📝 Details</Text>
           <View style={{ gap: 14 }}>
             <Field
-              label="Description"
-              placeholder="Describe your crop — variety, quality, how it was processed..."
+              label="Description (optional)"
+              placeholder="Quality, altitude, certifications, lot number..."
               value={description}
               onChangeText={setDesc}
               colors={colors}
@@ -254,14 +291,14 @@ export const AddCropScreen = ({ navigation }: any) => {
         </Animated.View>
 
         {/* ── Submit ── */}
-        <Animated.View entering={FadeInDown.delay(400).duration(400)} style={{ gap: 8 }}>
+        <Animated.View entering={FadeInDown.delay(500).duration(400)} style={{ gap: 8 }}>
           <GradientButton
-            title="Post Listing ☕"
+            title="Post Coffee Listing ☕"
             onPress={handlePost}
             loading={loading}
           />
           <Text style={[s.hint, { color: colors.textMuted }]}>
-            Your listing will be visible to all buyers on the marketplace
+            Visible to all buyers on the coffee marketplace
           </Text>
         </Animated.View>
 
@@ -287,7 +324,7 @@ export const AddCropScreen = ({ navigation }: any) => {
                   style={[s.modalItem, { borderBottomColor: colors.borderLight }]}
                 >
                   <Text style={{ fontSize: 15, fontFamily: FONT.regular, color: colors.text }}>
-                    {item.charAt(0).toUpperCase() + item.slice(1)}
+                    {item}
                   </Text>
                 </TouchableOpacity>
               )}
@@ -310,8 +347,9 @@ const s = StyleSheet.create({
   label:        { fontSize: 12, fontFamily: FONT.medium },
   input:        { borderRadius: RADIUS.lg, paddingHorizontal: 14, paddingVertical: 13, borderWidth: 1, fontSize: 14 },
   dropdown:     { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderRadius: RADIUS.lg, paddingHorizontal: 14, paddingVertical: 13, borderWidth: 1 },
-  emojiBtn:     { width: 46, height: 46, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginRight: 8, borderWidth: 1.5 },
-  pricePreview: { borderRadius: RADIUS.lg, padding: 12, gap: 2 },
+  varietyRow:   { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: RADIUS.lg, borderWidth: 1.5 },
+  checkCircle:  { width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  previewBox:   { borderRadius: RADIUS.lg, padding: 12, gap: 2 },
   hint:         { fontSize: 11, fontFamily: FONT.regular, textAlign: 'center' },
   modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.4)' },
   modalBox:     { borderTopLeftRadius: RADIUS.xxl, borderTopRightRadius: RADIUS.xxl, padding: 20, paddingBottom: 40 },

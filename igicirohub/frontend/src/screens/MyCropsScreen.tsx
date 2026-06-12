@@ -54,7 +54,7 @@ export const MyCropsScreen = ({ navigation }: any) => {
       <View style={{ flex: 1, backgroundColor: colors.background }}>
         <View style={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
           <TouchableOpacity onPress={() => navigation.goBack()}><ArrowLeft size={22} color={colors.text} /></TouchableOpacity>
-          <Text style={[{ fontSize: 20, fontFamily: FONT.bold, color: colors.text }]}>My Crops 🌾</Text>
+          <Text style={[{ fontSize: 20, fontFamily: FONT.bold, color: colors.text }]}>My Crops </Text>
           <TouchableOpacity onPress={() => navigation.navigate('AddCrop')}>
             <View style={{ backgroundColor: colors.primary, borderRadius: 12, padding: 8 }}>
               <Plus size={18} color="#FFFFFF" />
