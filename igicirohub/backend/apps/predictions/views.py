@@ -10,8 +10,52 @@ from .ml_engine import (
     predict_coffee_price, get_available_varieties,
     get_seasons, get_price_types, get_trend_indicator,
     train_model, auto_update_prices,
-    VARIETIES, META_PATH,
+    VARIETIES, RWANDA_REAL_DATA, META_PATH,
 )
+
+
+# ── Gemini helper using new google-genai SDK ───────────────────────────────
+
+def _call_gemini(system_instruction: str, user_message: str, history: list = None) -> str:
+    """
+    Call Gemini using the new google-genai SDK.
+    Supports multi-turn conversation history.
+    """
+    from google import genai
+    from google.genai import types
+
+    client = genai.Client(api_key=settings.GEMINI_API_KEY)
+
+    # Build contents list
+    contents = []
+
+    # Add history if provided
+    if history:
+        for msg in history[-10:]:
+            role    = 'user' if msg.get('role') == 'user' else 'model'
+            content = msg.get('content', '').strip()
+            if content:
+                contents.append(types.Content(
+                    role=role,
+                    parts=[types.Part(text=content)]
+                ))
+
+    # Add current message
+    contents.append(types.Content(
+        role='user',
+        parts=[types.Part(text=user_message)]
+    ))
+
+    response = client.models.generate_content(
+        model='gemini-2.0-flash',
+        config=types.GenerateContentConfig(
+            system_instruction=system_instruction,
+            temperature=0.7,
+            max_output_tokens=1024,
+        ),
+        contents=contents,
+    )
+    return response.text.strip()
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────
@@ -29,10 +73,25 @@ def _get_price_context():
     ) or "No price data available."
 
 
+def _get_real_data_context() -> str:
+    lines = ["Real Rwanda Coffee Export Data (2020-2026):"]
+    for year, d in sorted(RWANDA_REAL_DATA.items()):
+        lines.append(
+            f"  {year}: Producer {d['producer_frw_per_kg']} RWF/kg | "
+            f"Export ${d['export_usd_per_kg']:.4f}/kg | "
+            f"Volume {d['export_kg']:,.0f} kg"
+        )
+    lines.append("Price growth: 216 RWF (2020) → 750 RWF (2026) — 247% in 6 years")
+    return '\n'.join(lines)
+
+
 def _get_system_context(language: str, price_context: str) -> str:
+    real_data_ctx = _get_real_data_context()
     return f"""You are IgiciroHub AI — expert Rwanda coffee market advisor.
+Trained on REAL Rwanda coffee export data from 2020-2026.
 
 Rwanda coffee varieties: Bourbon Arabica, Red Bourbon, Yellow Bourbon, Jackson, Mibirizi, Robusta.
+
 Price types:
 - Farm Gate: Price paid directly to farmer/cooperative at harvest
 - Cooperative: Higher price after collective processing and quality grading
@@ -44,9 +103,9 @@ Seasons:
 - Off Season (Jul-Sep, Dec-Feb): Low supply — prices RISE (best time to sell)
 
 Market Trend Indicators:
-- Rising ↑: Price increasing >3% — good time to hold stock
-- Stable →: Price steady within 1-3% change
-- Falling ↓: Price declining — consider selling sooner
+- Rising ↑: Price increasing >3%
+- Stable →: Price steady within 1-3%
+- Falling ↓: Price declining
 
 Key Rwanda Coffee Facts:
 - Top districts: Huye, Nyamasheke, Gakenke, Rulindo, Burera, Nyaruguru
@@ -54,11 +113,14 @@ Key Rwanda Coffee Facts:
 - Fully washed > Natural process for specialty export
 - NAEB regulates all Rwanda coffee exports
 - Rwanda Arabica regularly scores SCA 85+ for specialty grade
+- Rwanda coffee exports grew from 16.2M kg (2020) to 22.3M kg (2025)
+
+{real_data_ctx}
 
 ALWAYS respond in {'Kinyarwanda' if language == 'rw' else 'English'}.
 Be practical and encouraging. Keep answers 2-5 sentences unless detail is needed.
 
-Current Rwanda Coffee Prices (Random Forest ML):
+Current Rwanda Coffee Prices (Random Forest ML — Real Data):
 {price_context}"""
 
 
@@ -87,56 +149,47 @@ def _rule_based(question, prices, language):
     if any(w in q for w in ['farm gate', 'cooperative', 'export', 'price type', 'igiciro']):
         if language == 'rw':
             return ("Farm Gate: Igiciro umuhinzi ahabwa vuba nyuma y'isarura. "
-                    "Cooperative: Igiciro nyuma yo gutunganya kawa muri koperative — kiruta farm gate. "
+                    "Cooperative: Igiciro nyuma yo gutunganya kawa muri koperative. "
                     "Export: Igiciro cy'isoko mpuzamahanga mu dollar (USD/kg).")
-        return ("Farm Gate: Price paid directly to farmer at harvest — lowest but immediate. "
-                "Cooperative: Higher price after collective processing, quality sorting and grading. "
-                "Export: International green bean price in USD — highest value, requires NAEB certification.")
+        return ("Farm Gate: Price paid directly to farmer at harvest. "
+                "Cooperative: Higher price after collective processing and quality grading. "
+                "Export: International green bean price in USD — highest value.")
 
     if any(w in q for w in ['trend', 'rising', 'falling', 'stable', 'market', 'isoko']):
         if language == 'rw':
-            return ("Isoko rizamuka ↑ (>3%): Ibiciro bizamuka — fata akanya urabaza ngo ubone ibiciro byiza. "
-                    "Isoko rihagaze → (1-3%): Impinduka nto — igihe cyo kugurisha ni cyiza. "
+            return ("Isoko rizamuka ↑ (>3%): Ibiciro bizamuka — fata akanya. "
+                    "Isoko rihagaze → (1-3%): Impinduka nto — igihe cyo kugurisha. "
                     "Isoko rimanuka ↓ (<1%): Ibiciro bishuka — fikiria kugurisha vuba.")
-        return ("Rising Market ↑ (>3%): Prices increasing — consider waiting for better prices. "
-                "Stable Market → (1-3%): Prices steady — good time to sell at current rates. "
-                "Falling Market ↓ (<1%): Prices declining — sell sooner rather than later.")
+        return ("Rising Market ↑ (>3%): Prices increasing — consider waiting. "
+                "Stable Market → (1-3%): Prices steady — good time to sell. "
+                "Falling Market ↓ (<1%): Prices declining — sell sooner.")
 
     if any(w in q for w in ['disease', 'pest', 'sick', 'indwara', 'bug', 'rust', 'cbd', 'wilt']):
         if language == 'rw':
-            return ("Indwara zikunze gutera ikawa mu Rwanda: Coffee Berry Disease (CBD), "
-                    "Isuri ry'amababi (CLR), Inzoka ya Antestia, na Coffee Wilt. "
-                    "Koresha fungicide ya copper (Champ/Kocide) ku CBD na CLR vuba.")
-        return ("Common Rwanda coffee diseases: Coffee Berry Disease (CBD), Leaf Rust (CLR), "
-                "Antestia Bug, and Coffee Wilt. "
-                "Apply copper fungicide (Champ/Kocide) for CBD and CLR immediately. "
-                "Remove and destroy infected plants to prevent spread.")
+            return ("Indwara: Coffee Berry Disease (CBD), Isuri (CLR), Antestia, Coffee Wilt. "
+                    "Koresha fungicide ya copper (Champ/Kocide) vuba.")
+        return ("Common diseases: Coffee Berry Disease (CBD), Leaf Rust (CLR), Antestia Bug, Wilt. "
+                "Apply copper fungicide (Champ/Kocide) immediately.")
 
     if any(w in q for w in ['variety', 'bourbon', 'jackson', 'mibirizi', 'robusta', 'arabica']):
         if language == 'rw':
-            return ("Ubwoko bw'ikawa mu Rwanda: Bourbon Arabica, Red Bourbon, Yellow Bourbon, "
-                    "Jackson, Mibirizi (Arabica), na Robusta. "
-                    "Red Bourbon na Yellow Bourbon ni iz'indashyikirwa cyane ku isoko mpuzamahanga.")
-        return ("Rwanda coffee varieties: Bourbon Arabica, Red Bourbon, Yellow Bourbon, Jackson, "
-                "Mibirizi (all Arabica), and Robusta. "
+            return ("Ubwoko: Bourbon Arabica, Red Bourbon, Yellow Bourbon, Jackson, Mibirizi, Robusta. "
+                    "Red Bourbon na Yellow Bourbon bifite agaciro gakomeye ku isoko.")
+        return ("Varieties: Bourbon Arabica, Red Bourbon, Yellow Bourbon, Jackson, Mibirizi, Robusta. "
                 "Red Bourbon and Yellow Bourbon fetch the highest specialty export prices.")
 
-    if any(w in q for w in ['naeb', 'cooperative', 'ikoperative', 'export license']):
+    if any(w in q for w in ['2020', '2021', '2022', '2023', '2024', '2025', '2026', 'history', 'historical']):
+        lines = [f"{yr}: {d['producer_frw_per_kg']} RWF/kg | ${d['export_usd_per_kg']:.2f}/kg"
+                 for yr, d in sorted(RWANDA_REAL_DATA.items())]
         if language == 'rw':
-            return ("NAEB (National Agriculture Export Development Board) igenzura kohereza "
-                    "ibihingwa by'u Rwanda mu mahanga. "
-                    "Iyandikishe kuri NAEB kugirango ubone uruhushya rwo kohereza ikawa.")
-        return ("NAEB (National Agriculture Export Development Board) regulates Rwanda's coffee exports. "
-                "Register with NAEB to get your export license and connect with international buyers. "
-                "Cooperatives help farmers access better prices collectively.")
+            return "Amateka y'ibiciro:\n" + '\n'.join(lines) + "\nIzamuka: 216→750 RWF/kg (2020-2026)"
+        return "Rwanda coffee price history:\n" + '\n'.join(lines) + "\nGrowth: 216→750 RWF/kg (2020-2026)"
 
     if language == 'rw':
-        return ("Nshobora gufasha ku birebana n'ibiciro by'ikawa (Farm Gate, Cooperative, Export), "
-                "igihe cy'isarura (Season A, B, Off Season), ubwoko bw'ikawa, "
-                "indwara, no kohereza mu mahanga. Baza ikibazo kirambuye.")
-    return ("I help with Rwanda coffee prices (Farm Gate, Cooperative, Export), "
-            "harvest seasons (A, B, Off Season), variety comparisons, "
-            "disease prevention, and export markets. Ask me anything!")
+        return ("Nshobora gufasha ku ibiciro, igihe cy'isarura, ubwoko bw'ikawa, "
+                "indwara, no kohereza. Baza ikibazo kirambuye.")
+    return ("I help with Rwanda coffee prices, seasons, varieties, disease prevention, "
+            "and export markets. Ask me anything!")
 
 
 # ── Available crops & seasons ──────────────────────────────────────────────
@@ -264,12 +317,13 @@ def update_market_prices(request):
         if was_created: created += 1
         else: updated += 1
     return Response({
-        'message':    'Coffee prices updated using Random Forest ML.',
-        'updated':    updated,
-        'created':    created,
-        'total':      len(updates),
-        'algorithm':  'RandomForest',
-        'updated_at': datetime.now().isoformat(),
+        'message':     'Coffee prices updated using Random Forest ML (Real Rwanda Data 2020-2026).',
+        'updated':     updated,
+        'created':     created,
+        'total':       len(updates),
+        'algorithm':   'RandomForest',
+        'data_source': 'Rwanda Coffee Exports 2020-2026',
+        'updated_at':  datetime.now().isoformat(),
     })
 
 
@@ -280,11 +334,20 @@ def update_market_prices(request):
 def model_info(request):
     if os.path.exists(META_PATH):
         with open(META_PATH) as f:
-            return Response(json.load(f))
+            meta = json.load(f)
+        meta['real_data_summary'] = {
+            str(yr): {
+                'producer_frw_per_kg': d['producer_frw_per_kg'],
+                'export_usd_per_kg':   round(d['export_usd_per_kg'], 4),
+                'export_volume_kg':    d['export_kg'],
+            }
+            for yr, d in RWANDA_REAL_DATA.items()
+        }
+        return Response(meta)
     return Response({'message': 'Model not trained yet. POST /predictions/train/ to train.'})
 
 
-# ── Ask Assistant (single question) ───────────────────────────────────────
+# ── Ask Assistant ──────────────────────────────────────────────────────────
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -299,18 +362,15 @@ def ask_assistant(request):
 
     if settings.GEMINI_API_KEY:
         try:
-            import google.generativeai as genai
-            genai.configure(api_key=settings.GEMINI_API_KEY)
-            model = genai.GenerativeModel('gemini-1.5-flash')
-            response = model.generate_content(system_prompt + f'\n\nQuestion: {question}')
-            return Response({'answer': response.text, 'source': 'gemini'})
+            answer = _call_gemini(system_prompt, question)
+            return Response({'answer': answer, 'source': 'gemini'})
         except Exception as e:
-            print(f"[Gemini ask] {e}")
+            print(f"[Gemini ask] {type(e).__name__}: {e}")
 
     return Response({'answer': _rule_based(question, prices, language), 'source': 'local'})
 
 
-# ── Voice Assistant (multi-turn with memory) ───────────────────────────────
+# ── Voice Assistant ────────────────────────────────────────────────────────
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -323,7 +383,7 @@ def voice_assistant(request):
         return Response({'error': 'question is required.'}, status=400)
 
     prices, price_context = _get_price_context()
-    system_instruction = _get_system_context(language, price_context)
+    system_instruction    = _get_system_context(language, price_context)
 
     if not settings.GEMINI_API_KEY:
         return Response({
@@ -333,33 +393,16 @@ def voice_assistant(request):
         })
 
     try:
-        import google.generativeai as genai
-        genai.configure(api_key=settings.GEMINI_API_KEY)
-
-        model = genai.GenerativeModel(
-            model_name='gemini-1.5-flash',
-            system_instruction=system_instruction,
-        )
-
-        gemini_history = []
-        for msg in history[-10:]:
-            role    = 'user' if msg.get('role') == 'user' else 'model'
-            content = msg.get('content', '').strip()
-            if content:
-                gemini_history.append({'role': role, 'parts': [content]})
-
-        chat     = model.start_chat(history=gemini_history)
-        response = chat.send_message(question)
-
+        answer = _call_gemini(system_instruction, question, history)
         return Response({
-            'answer':   response.text.strip(),
+            'answer':   answer,
             'source':   'gemini',
             'language': language,
-            'model':    'gemini-1.5-flash',
+            'model':    'gemini-2.0-flash',
         })
 
     except Exception as e:
-        print(f"[Gemini voice] {e}")
+        print(f"[Gemini voice] {type(e).__name__}: {e}")
         return Response({
             'answer':   _rule_based(question, prices, language),
             'source':   'local_fallback',
@@ -412,10 +455,11 @@ def detect_disease(request):
 
     if settings.GEMINI_API_KEY:
         try:
-            import google.generativeai as genai
-            genai.configure(api_key=settings.GEMINI_API_KEY)
-            model    = genai.GenerativeModel('gemini-1.5-flash')
-            prompt   = f"""Analyze this Rwanda {crop_name} plant image.
+            from google import genai
+            from google.genai import types
+
+            client = genai.Client(api_key=settings.GEMINI_API_KEY)
+            prompt = f"""Analyze this Rwanda {crop_name} plant image.
 Look for: Coffee Berry Disease, Leaf Rust, Antestia Bug, Coffee Wilt.
 Respond ONLY with valid JSON (no markdown):
 {{
@@ -428,7 +472,13 @@ Respond ONLY with valid JSON (no markdown):
   "prevention": "prevention tips"
 }}"""
             img_data = base64.b64decode(image_b64)
-            response = model.generate_content([prompt, {'mime_type': mime_type, 'data': img_data}])
+            response = client.models.generate_content(
+                model='gemini-2.0-flash',
+                contents=[
+                    prompt,
+                    types.Part.from_bytes(data=img_data, mime_type=mime_type),
+                ],
+            )
             raw = response.text.strip()
             if '```' in raw:
                 raw = raw.split('```')[1]
@@ -437,7 +487,7 @@ Respond ONLY with valid JSON (no markdown):
             result.update({'source': 'gemini_vision', 'crop': crop_name, 'timestamp': datetime.now().isoformat()})
             return Response(result)
         except Exception as e:
-            print(f"[Disease] {e}")
+            print(f"[Disease] {type(e).__name__}: {e}")
 
     import random as rnd, datetime as dt
     if rnd.random() > 0.45:
@@ -466,5 +516,10 @@ Respond ONLY with valid JSON (no markdown):
 def train_ml_model(request):
     fg, ex, sc = train_model()
     if fg:
-        return Response({'message': 'Random Forest trained for 6 coffee varieties.', 'algorithm': 'RandomForest'})
+        return Response({
+            'message':     'Random Forest trained on real Rwanda coffee data 2020-2026.',
+            'algorithm':   'RandomForest',
+            'data_source': 'Rwanda Coffee Exports 2020-2026',
+            'real_data':   {str(yr): d for yr, d in RWANDA_REAL_DATA.items()},
+        })
     return Response({'error': 'Training failed.'}, status=500)

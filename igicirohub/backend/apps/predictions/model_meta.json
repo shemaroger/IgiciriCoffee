@@ -1,8 +1,19 @@
 {
   "algorithm": "RandomForest",
   "n_estimators": 200,
-  "trained_at": "2026-06-09T11:01:21.864270",
-  "n_samples": 144,
+  "max_depth": 14,
+  "trained_at": "2026-06-12T03:56:44.405437",
+  "n_samples": 456,
+  "data_source": "Rwanda Coffee Exports 2020-2026",
+  "years": [
+    2020,
+    2021,
+    2022,
+    2023,
+    2024,
+    2025,
+    2026
+  ],
   "varieties": [
     "Bourbon Arabica",
     "Red Bourbon",
@@ -20,5 +31,35 @@
     "Farm Gate",
     "Cooperative",
     "Export"
-  ]
+  ],
+  "real_data": {
+    "2020": {
+      "producer_frw_per_kg": 216,
+      "export_usd_per_kg": 3.413622
+    },
+    "2021": {
+      "producer_frw_per_kg": 248,
+      "export_usd_per_kg": 4.479715
+    },
+    "2022": {
+      "producer_frw_per_kg": 410,
+      "export_usd_per_kg": 5.884733
+    },
+    "2023": {
+      "producer_frw_per_kg": 410,
+      "export_usd_per_kg": 5.007113
+    },
+    "2024": {
+      "producer_frw_per_kg": 480,
+      "export_usd_per_kg": 5.240076
+    },
+    "2025": {
+      "producer_frw_per_kg": 650,
+      "export_usd_per_kg": 6.229519
+    },
+    "2026": {
+      "producer_frw_per_kg": 750,
+      "export_usd_per_kg": 5.549103
+    }
+  }
 }
